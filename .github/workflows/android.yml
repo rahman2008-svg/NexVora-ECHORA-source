@@ -1,0 +1,129 @@
+name: NexVora ECHORA Android Build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: echora-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Backend tests
+        working-directory: backend
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Fetch pinned whisper.cpp
+        run: |
+          if [ ! -f app/src/main/cpp/whisper/CMakeLists.txt ]; then
+            rm -rf app/src/main/cpp/whisper
+            git clone https://github.com/ggml-org/whisper.cpp app/src/main/cpp/whisper
+            git -C app/src/main/cpp/whisper checkout 2eeeba56e9edd762b4b38467bab96c2517163158
+          fi
+
+      - name: Read Gradle version
+        id: gv
+        run: |
+          VERSION=$(sed -n 's/.*gradle-\([0-9][0-9.]*\)-bin.zip.*/\1/p' gradle/wrapper/gradle-wrapper.properties)
+          test -n "$VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ steps.gv.outputs.version }}
+
+      - name: Generate Gradle launcher
+        run: |
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version "${{ steps.gv.outputs.version }}" --distribution-type bin
+          fi
+          chmod +x gradlew
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android tools
+        run: |
+          sdkmanager "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Lint
+        run: ./gradlew :app:lintDebug --stacktrace
+
+      - name: Build APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Prepare APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/NexVora-ECHORA-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NexVora-ECHORA-APK
+          path: dist/NexVora-ECHORA-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECHORA-Build-Reports
+          path: |
+            app/build/reports/**
+            app/build/test-results/**
+          if-no-files-found: ignore
+
+  publish-debug:
+    needs: [android, backend-tests]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: NexVora-ECHORA-APK
+          path: dist
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-latest
+          name: NexVora ECHORA - Latest Android APK
+          target_commitish: ${{ github.sha }}
+          make_latest: false
+          prerelease: true
+          overwrite_files: true
+          body: |
+            NexVora ECHORA - Latest Android Debug APK.
+            Developer: Prince AR Abdur Rahman
+            Publisher: NexVora Lab's Ofc
+            Build type: DEBUG.
+            This is a debug-signed APK, not a production-signed release.
+          files: dist/NexVora-ECHORA-debug.apk
