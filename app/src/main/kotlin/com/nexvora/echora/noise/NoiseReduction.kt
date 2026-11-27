@@ -24,7 +24,7 @@ object NoiseReduction {
     suspend fun analyze(context: Context, audio: Uri): NoiseProfile = withContext(Dispatchers.IO) {
         val pcm = File.createTempFile("echora_noise_", ".f32", context.cacheDir)
         try {
-            AudioDecoder(context).decode(audio, pcm, 0, 120_000.coerceAtLeast(1)).let { }   // first 2 minutes is enough
+            AudioDecoder(context).decode(audio, pcm, 0L, 120_000L.coerceAtLeast(1L)).let { }   // first 2 minutes is enough
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             // audio shorter than the analysis window: decode everything

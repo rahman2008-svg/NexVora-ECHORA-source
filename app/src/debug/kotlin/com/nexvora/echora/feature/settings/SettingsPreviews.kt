@@ -19,7 +19,6 @@ private fun SettingsFrame(version: String) = ResoundTheme {
             SettingsWorkspace(
                 version = version,
                 channel = releaseChannel(version),
-                onCheckUpdates = { EditorPreviewEvents.record("check-updates") },
                 onAbout = { EditorPreviewEvents.record("about") },
                 onChangelog = { EditorPreviewEvents.record("changelog") },
             )
