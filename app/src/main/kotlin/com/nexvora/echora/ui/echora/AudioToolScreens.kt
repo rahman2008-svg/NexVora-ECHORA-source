@@ -59,7 +59,7 @@ fun NoiseScreen(c: AppContainer, onBack: () -> Unit, onPremium: () -> Unit) {
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
         EchoraTopBar("Noise Reduction", onBack)
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Signal-processing denoiser (FFT noise reduction + high-pass). This is classic DSP, not AI noise cancellation; it works best on steady noise such as hiss, hum and fans. Your original file is never changed.", color = TextMid, fontSize = 13.sp)
+            Text("Noise-reduction DSP (FFT noise reduction + high-pass). This is classic DSP, not AI noise cancellation; it works best on steady noise such as hiss, hum and fans. Your original file is never changed.", color = TextMid, fontSize = 13.sp)
             GlassCard(Modifier.fillMaxWidth()) {
                 Text(name ?: "No audio selected", color = TextHi)
                 OutlineAction("Choose audio", { picker.launch(arrayOf("audio/*")) }, Modifier.padding(top = 8.dp), Icons.Outlined.FileUpload, enabled = busy == null)
