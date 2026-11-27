@@ -9,7 +9,7 @@ import java.nio.ByteOrder
 
 class WavHeaderTest {
     @Test fun headerDescribesPcm16() {
-        val f = File.createTempFile("h", ".wav"); f.deleteOnExit()
+        val f = File.createTempFile("wav", ".wav"); f.deleteOnExit()
         RandomAccessFile(f, "rw").use { it.write(ByteArray(44 + 1000)); EchoraWavRecorder.writeHeader(it, 1000, 44100, 1) }
         val b = ByteBuffer.wrap(f.readBytes()).order(ByteOrder.LITTLE_ENDIAN)
         assertEquals("RIFF", String(b.array(), 0, 4)); assertEquals(1036, b.getInt(4)); assertEquals("WAVE", String(b.array(), 8, 4))

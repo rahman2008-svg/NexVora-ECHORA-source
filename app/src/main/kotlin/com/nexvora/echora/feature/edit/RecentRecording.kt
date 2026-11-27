@@ -26,7 +26,7 @@ class RecentRecordingStore(private val fileProvider: () -> File) {
     constructor(file: File) : this({ file })
     private val file: File by lazy(fileProvider)
     private fun validate(record: RecentRecording) {
-        require(record.uri.length in 1..4096 && record.uri.none { it.isISOControl() })
+        require(record.uri.toByteArray(Charsets.UTF_8).size in 1..4096 && record.uri.none { it.isISOControl() })
         val uri = try { java.net.URI(record.uri) } catch (t: Exception) {
             throw IllegalArgumentException("Invalid recent recording URI", t)
         }

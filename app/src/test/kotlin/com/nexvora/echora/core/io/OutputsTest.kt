@@ -10,7 +10,7 @@ class OutputsTest {
     }
 
     @Test fun destinationDisplayPreservesProductionAndDevtestIsolation() {
-        val expected = if (BuildConfig.IS_DEVTEST) "Music/Resound DEV TEST" else "Music/Resound"
+        val expected = if (BuildConfig.IS_DEVTEST) "Music/ECHORA DEV TEST" else "Music/ECHORA"
         assertEquals(expected, Outputs.musicDirectoryDisplay)
     }
 }
