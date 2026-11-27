@@ -1,0 +1,16 @@
+# Adapted from WhisperNote (MIT). Requires the whisper.cpp source in ./whisper (see README.md here).
+cmake_minimum_required(VERSION 3.22.1)
+project(echora_whisper)
+set(CMAKE_CXX_STANDARD 17)
+add_compile_options(-O3)
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+add_subdirectory(whisper)
+add_library(echora_whisper SHARED bridge.cpp)
+target_link_libraries(echora_whisper whisper android log)
+# Android 15+ 16 KB page-size devices
+target_link_options(echora_whisper PRIVATE "-Wl,-z,max-page-size=16384")

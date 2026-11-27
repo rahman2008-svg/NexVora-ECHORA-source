@@ -1,0 +1,137 @@
+name: Android build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # needed only by the release jobs
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install and test backend
+        working-directory: backend
+        run: |
+          npm install --no-audit --no-fund
+          npm test
+
+  android:
+    runs-on: ubuntu-latest
+    outputs:
+      built: ${{ steps.done.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+
+      # The upload shipped an empty whisper.cpp submodule. Fetch the version WhisperNote pinned (v1.8.3) if absent.
+      - name: Fetch whisper.cpp (pinned)
+        run: |
+          if [ ! -f app/src/main/cpp/whisper/CMakeLists.txt ]; then
+            rm -rf app/src/main/cpp/whisper
+            git clone https://github.com/ggml-org/whisper.cpp app/src/main/cpp/whisper
+            git -C app/src/main/cpp/whisper checkout 2eeeba56e9edd762b4b38467bab96c2517163158
+          fi
+
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK and CMake
+        run: sdkmanager "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+      - name: Lint
+        run: ./gradlew :app:lintDebug --stacktrace
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: echora-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Upload test and lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            app/build/reports/**
+            app/build/test-results/**
+      - id: done
+        run: echo "ok=true" >> "$GITHUB_OUTPUT"
+
+  # Runs only after every job above succeeded, and only for pushes to main/master. DEBUG build, clearly labelled.
+  release-debug:
+    needs: [android, backend-tests]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: echora-debug-apk, path: dist }
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-${{ github.run_number }}
+          name: "ECHORA debug build #${{ github.run_number }}"
+          prerelease: true
+          body: "DEBUG build (debug-signed, not for distribution). Offline AI models are downloaded in-app."
+          files: dist/app-debug.apk
+
+  # Signed release: needs GitHub Secrets ECHORA_KEYSTORE_BASE64, ECHORA_KEYSTORE_PASSWORD, ECHORA_KEY_ALIAS, ECHORA_KEY_PASSWORD.
+  release-signed:
+    needs: [android, backend-tests]
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'))
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.ECHORA_KEYSTORE_BASE64 != '' }}
+    steps:
+      - name: Skip when signing secrets are not configured
+        if: env.HAS_KEYSTORE != 'true'
+        run: echo "No signing secrets configured - signed release skipped."
+      - uses: actions/checkout@v4
+        if: env.HAS_KEYSTORE == 'true'
+      - name: Fetch whisper.cpp (pinned)
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          if [ ! -f app/src/main/cpp/whisper/CMakeLists.txt ]; then
+            git clone https://github.com/ggml-org/whisper.cpp app/src/main/cpp/whisper
+            git -C app/src/main/cpp/whisper checkout 2eeeba56e9edd762b4b38467bab96c2517163158
+          fi
+      - uses: actions/setup-java@v4
+        if: env.HAS_KEYSTORE == 'true'
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+        if: env.HAS_KEYSTORE == 'true'
+      - name: Install NDK and CMake
+        if: env.HAS_KEYSTORE == 'true'
+        run: sdkmanager "ndk;28.2.13676358" "cmake;3.22.1" "platforms;android-35" "build-tools;35.0.0"
+      - name: Build signed release
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          ECHORA_KEYSTORE_PASSWORD: ${{ secrets.ECHORA_KEYSTORE_PASSWORD }}
+          ECHORA_KEY_ALIAS: ${{ secrets.ECHORA_KEY_ALIAS }}
+          ECHORA_KEY_PASSWORD: ${{ secrets.ECHORA_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.ECHORA_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export ECHORA_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+          ./gradlew :app:assembleRelease --stacktrace
+          rm -f "$RUNNER_TEMP/release.jks"
+      - uses: softprops/action-gh-release@v2
+        if: env.HAS_KEYSTORE == 'true'
+        with:
+          tag_name: v1.0.0-${{ github.run_number }}
+          name: "NexVora ECHORA 1.0.0 (signed) #${{ github.run_number }}"
+          files: app/build/outputs/apk/release/*.apk

@@ -1,0 +1,25 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Build and release binaries are published as GitHub Release assets.
+*.apk
+*.aab
+
+# ECHORA
+*.jks
+*.keystore
+.env
+backend/node_modules/
+backend/data/
+backend/.env
+app/schemas/**/*.tmp
+*.gguf
+ggml-*.bin
